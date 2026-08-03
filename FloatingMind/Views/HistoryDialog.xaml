@@ -1,0 +1,94 @@
+<Window x:Class="FloatingMind.HistoryDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+        Title="文件历史回溯 - Floating Mind"
+        Height="720" Width="1000" ResizeMode="CanResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource RegionBrush}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题栏 -->
+        <Border Grid.Row="0" Background="{DynamicResource DarkRegionBrush}"
+                Padding="12,10" CornerRadius="6" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal">
+                <iconPacks:PackIconLucide Kind="ScrollText" Width="16" Height="16"
+                                          Foreground="{DynamicResource PrimaryTextBrush}"
+                                          VerticalAlignment="Center" />
+                <TextBlock Text="文件历史回溯" FontSize="15" FontWeight="Bold" Margin="6,0,0,0"
+                           Foreground="{DynamicResource PrimaryTextBrush}" VerticalAlignment="Center" />
+                <TextBlock x:Name="TxtCount" FontSize="12" Margin="12,0,0,0"
+                           Foreground="{DynamicResource SecondaryTextBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- 修改记录列表 -->
+        <ListView Grid.Row="1" x:Name="HistoryList"
+                  Background="Transparent"
+                  BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                  Foreground="{DynamicResource PrimaryTextBrush}"
+                  SelectionChanged="HistoryList_SelectionChanged">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="时间" Width="130"
+                                    DisplayMemberBinding="{Binding CreatedAt, StringFormat=MM-dd HH:mm:ss}" />
+                    <GridViewColumn Header="文件" Width="240"
+                                    DisplayMemberBinding="{Binding FilePath}" />
+                    <GridViewColumn Header="Agent" Width="90"
+                                    DisplayMemberBinding="{Binding Agent}" />
+                    <GridViewColumn Header="原因" Width="240"
+                                    DisplayMemberBinding="{Binding Reason}" />
+                </GridView>
+            </ListView.View>
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="FontSize" Value="12" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                    <Setter Property="BorderThickness" Value="0,0,0,1" />
+                </Style>
+            </ListView.ItemContainerStyle>
+        </ListView>
+
+        <!-- 前后内容对比 -->
+        <Grid Grid.Row="2" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <GroupBox Header="修改前 (Before)" Padding="8"
+                      Foreground="{DynamicResource PrimaryTextBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}">
+                <TextBox x:Name="TxtBefore" IsReadOnly="True" TextWrapping="Wrap"
+                         FontFamily="Cascadia Code" FontSize="12"
+                         VerticalScrollBarVisibility="Auto"
+                         Background="{DynamicResource DarkRegionBrush}"
+                         Foreground="{DynamicResource PrimaryTextBrush}" />
+            </GroupBox>
+            <GroupBox Grid.Column="1" Header="修改后 (After)" Padding="8" Margin="10,0,0,0"
+                      Foreground="{DynamicResource PrimaryTextBrush}"
+                      BorderBrush="{DynamicResource BorderBrush}">
+                <TextBox x:Name="TxtAfter" IsReadOnly="True" TextWrapping="Wrap"
+                         FontFamily="Cascadia Code" FontSize="12"
+                         VerticalScrollBarVisibility="Auto"
+                         Background="{DynamicResource DarkRegionBrush}"
+                         Foreground="{DynamicResource PrimaryTextBrush}" />
+            </GroupBox>
+        </Grid>
+
+        <!-- 按钮 -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="恢复到修改前" Style="{StaticResource ButtonPrimary}"
+                    Width="150" Height="34" Click="Restore_Click" />
+            <Button Content="关闭" Style="{StaticResource ButtonDefault}"
+                    Width="80" Height="34" Margin="10,0,0,0" Click="Close_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

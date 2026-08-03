@@ -1,0 +1,117 @@
+<Window x:Class="FloatingMind.SettingsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:hc="https://handyorg.github.io/handycontrol"
+        xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+        Title="设置 - Floating Mind"
+        Height="550" Width="600" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource RegionBrush}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+
+                <!-- LLM 配置 -->
+                <GroupBox Header="DeepSeek API 配置" Padding="16" Margin="0,0,0,14"
+                          Foreground="{DynamicResource PrimaryTextBrush}"
+                          BorderBrush="{DynamicResource BorderBrush}"
+                          Background="Transparent">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <iconPacks:PackIconLucide Kind="Key" Width="14" Height="14"
+                                                      Foreground="{DynamicResource PrimaryTextBrush}"
+                                                      VerticalAlignment="Center" />
+                            <TextBlock Text="API Key" Margin="6,0,0,0" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" />
+                        </StackPanel>
+                        <TextBox x:Name="TxtApiKey" Height="34" FontFamily="Consolas" Margin="0,0,0,12"
+                                 hc:InfoElement.Placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+
+                        <TextBlock Text="API 地址" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,0,0,4" />
+                        <TextBox x:Name="TxtApiUrl" Height="34" Margin="0,0,0,12" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="低成本模型" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                                <TextBox x:Name="TxtLowCost" Height="34" Margin="0,4,0,0" FontSize="12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="高性能模型" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                                <TextBox x:Name="TxtHighPerf" Height="34" Margin="0,4,0,0" FontSize="12" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- 系统配置 -->
+                <GroupBox Header="系统参数" Padding="16" Margin="0,0,0,14"
+                          Foreground="{DynamicResource PrimaryTextBrush}"
+                          BorderBrush="{DynamicResource BorderBrush}"
+                          Background="Transparent">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="最大并发 Agent" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                                <hc:NumericUpDown x:Name="NumMaxConcurrency" Minimum="1" Maximum="6"
+                                                  Height="34" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="资源锁超时 (秒)" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource PrimaryTextBrush}" />
+                                <hc:NumericUpDown x:Name="NumLockTimeout" Minimum="60" Maximum="3600"
+                                                  Value="300" Height="34" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="工作区路径" FontWeight="SemiBold" Margin="0,14,0,4"
+                                   Foreground="{DynamicResource PrimaryTextBrush}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="TxtWorkspace" Height="34" />
+                            <Button Grid.Column="1" Content="..."
+                                    Width="34" Height="34" Margin="6,0,0,0"
+                                    Style="{StaticResource ButtonDefault}"
+                                    Click="BrowseWorkspace_Click" />
+                        </Grid>
+                    </StackPanel>
+                </GroupBox>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 按钮 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="取消" Style="{StaticResource ButtonDefault}"
+                    Width="80" Height="34" Margin="0,0,10,0" Click="Cancel_Click" />
+            <Button Style="{StaticResource ButtonPrimary}"
+                    Width="100" Height="34" Click="Save_Click">
+                <StackPanel Orientation="Horizontal">
+                    <iconPacks:PackIconLucide Kind="Save" Width="14" Height="14"
+                                              Foreground="White" Margin="0,0,4,0" />
+                    <TextBlock Text="保存" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

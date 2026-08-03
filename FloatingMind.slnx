@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="FloatingMind/FloatingMind.csproj" />
+  <Project Path="FMSetup/FMSetup.vdproj" Type="Installer">
+    <Build />
+  </Project>
+</Solution>

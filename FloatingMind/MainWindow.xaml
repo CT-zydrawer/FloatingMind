@@ -1,0 +1,405 @@
+<Window x:Class="FloatingMind.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:hc="https://handyorg.github.io/handycontrol"
+        xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+        xmlns:vm="clr-namespace:FloatingMind.ViewModels"
+        mc:Ignorable="d"
+        Title="Floating Mind — 多Agent智能调度系统"
+        Height="900" Width="1500" MinHeight="650" MinWidth="1100"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource RegionBrush}">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="60" />
+            <ColumnDefinition Width="380" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ==================== 左侧导航栏 ==================== -->
+        <Border Grid.Column="0" Background="{DynamicResource DarkRegionBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+            <StackPanel VerticalAlignment="Center" x:Name="NavPanel">
+
+                <!-- Blackboard -->
+                <!--RadioButton x:Name="BtnBlackboard" Style="{StaticResource NavButtonStyle}"
+                             IsChecked="True" ToolTip="黑板 Blackboard" Click="NavBlackboard_Click">
+                    <iconPacks:PackIconLucide Kind="Presentation" Width="22" Height="22"
+                                              Foreground="White" />
+                </RadioButton-->
+
+                <!-- Chat -->
+                <RadioButton Style="{StaticResource NavButtonStyle}"
+                             ToolTip="对话 Chat" Click="NavChat_Click" IsChecked="True">
+                    <iconPacks:PackIconLucide Kind="MessageCircle" Width="22" Height="22"
+                                              Foreground="White" />
+                </RadioButton>
+
+                <!-- Workflow -->
+                <RadioButton Style="{StaticResource NavButtonStyle}"
+                             ToolTip="任务流 Workflow" Click="NavWorkflow_Click">
+                    <iconPacks:PackIconLucide Kind="Workflow" Width="22" Height="22"
+                                              Foreground="White" />
+                </RadioButton>
+
+                <!-- Journal -->
+                <RadioButton Style="{StaticResource NavButtonStyle}"
+                             ToolTip="审计日志 Journal" Click="NavJournal_Click">
+                    <iconPacks:PackIconLucide Kind="ScrollText" Width="22" Height="22"
+                                              Foreground="White" />
+                </RadioButton>
+
+                <!-- History -->
+                <RadioButton Style="{StaticResource NavButtonStyle}"
+                             ToolTip="文件历史 History" Click="NavHistory_Click">
+                    <iconPacks:PackIconLucide Kind="CircleArrowLeft" Width="22" Height="22"
+                                              Foreground="White" />
+                </RadioButton>
+
+                <Separator Margin="10,8" Background="{DynamicResource BorderBrush}" />
+
+                <!-- Settings -->
+                <RadioButton Style="{StaticResource NavButtonStyle}"
+                             ToolTip="设置 Settings" Click="NavSettings_Click">
+                    <iconPacks:PackIconLucide Kind="Settings" Width="22" Height="22"
+                                              Foreground="White" />
+                </RadioButton>
+            </StackPanel>
+        </Border>
+
+        <!-- ==================== 中间主面板 ==================== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- === 标题栏 === -->
+            <Border Grid.Row="0" Background="{DynamicResource PrimaryBrush}" Padding="14,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal">
+                        <iconPacks:PackIconLucide Kind="Brain" Width="18" Height="18"
+                                                  Foreground="White" VerticalAlignment="Center" />
+                        <TextBlock Text="Floating Mind" Foreground="White" FontWeight="Bold" FontSize="15"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding SystemStatus}" Foreground="#CCFFFFFF" FontSize="12"
+                                   Margin="16,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Border x:Name="RunningBadge" CornerRadius="4" Padding="8,3"
+                                Background="#44FFFFFF" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <iconPacks:PackIconLucide Kind="Loader" Width="12" Height="12"
+                                                          Foreground="White" VerticalAlignment="Center" />
+                                <TextBlock Text="RUNNING" Foreground="White" FontSize="10"
+                                           FontWeight="Bold" Margin="4,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- === 日志/Chat输出 === -->
+            <ScrollViewer Grid.Row="1" x:Name="LogScroller"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding LogEntries}" Margin="14,10">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontFamily="Cascadia Code" FontSize="8"
+                                       TextWrapping="Wrap" Margin="0,2"
+                                       Foreground="{DynamicResource PrimaryTextBrush}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!-- === 提问/命令确认栏 === -->
+            <StackPanel Grid.Row="2">
+
+                <!-- 提问澄清栏: 信息不足时 Supervisor 向用户提问 -->
+                <Border Background="#443B82F6" Padding="12,8"
+                        Visibility="{Binding HasPendingQuestion,
+                            Converter={StaticResource BoolToVisConverter}, FallbackValue=Collapsed}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="240" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <iconPacks:PackIconLucide Kind="MessageCircleQuestionMark" Width="16" Height="16"
+                                                  Foreground="#FF3B82F6" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding PendingQuestion}"
+                                   Foreground="#FF3B82F6" TextWrapping="Wrap"
+                                   VerticalAlignment="Center" Margin="6,0,8,0" FontSize="12" />
+                        <TextBox Grid.Column="2" x:Name="TxtQuestionAnswer" Height="30"
+                                 hc:InfoElement.Placeholder="补充信息 / 取消"
+                                 KeyDown="QuestionAnswer_KeyDown" />
+                        <Button Grid.Column="3" Content="提交" Command="{Binding SubmitAnswerCommand}"
+                                Style="{StaticResource ButtonPrimary}" Width="64" Height="30" Margin="6,0,0,0" />
+                    </Grid>
+                </Border>
+
+                <!-- 命令确认栏 -->
+                <Border Background="#44D32F2F" Padding="12,8"
+                        Visibility="{Binding HasPendingConfirm,
+                            Converter={StaticResource BoolToVisConverter}, FallbackValue=Collapsed}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconLucide Kind="CircleAlert" Width="16" Height="16"
+                                                      Foreground="#FFD32F2F" VerticalAlignment="Center" />
+                            <TextBlock Text="需要确认: " Foreground="#FFD32F2F" FontWeight="Bold"
+                                       VerticalAlignment="Center" Margin="6,0,4,0" />
+                            <TextBlock Text="{Binding PendingCommand}" Foreground="#FFD32F2F"
+                                       FontFamily="Consolas" VerticalAlignment="Center" FontSize="12" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="批准" Command="{Binding ConfirmCommand}"
+                                Style="{StaticResource ButtonSuccess}" Width="70" Height="28" Margin="4,0" />
+                        <Button Grid.Column="2" Content="拒绝" Command="{Binding RejectCommand}"
+                                Style="{StaticResource ButtonDanger}" Width="70" Height="28" />
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- === 输入区 === -->
+            <Border Grid.Row="3" Background="{DynamicResource DarkRegionBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                    Padding="12,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Text="{Binding UserInput, UpdateSourceTrigger=PropertyChanged}"
+                             hc:InfoElement.Placeholder="输入任务描述... 如: 帮我分析项目代码结构"
+                             
+                             AcceptsReturn="False" Height="38" FontSize="13"
+                             KeyDown="UserInput_KeyDown" />
+                    <Button Grid.Column="1"
+                            Command="{Binding SendCommand}"
+                            IsEnabled="{Binding IsRunning, Converter={StaticResource InvertBoolConverter}}"
+                            Style="{StaticResource ButtonPrimary}"
+                            Width="72" Height="38" Margin="10,0,0,0" FontWeight="Bold">
+                        <StackPanel Orientation="Horizontal">
+                            <iconPacks:PackIconLucide Kind="Send" Width="14" Height="14"
+                                                      Foreground="White" />
+                            <TextBlock Text="发送" Margin="4,0,0,0" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ==================== 右侧详情面板 (TabControl) ==================== -->
+        <Border Grid.Column="2" Background="{DynamicResource RegionBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- 选项卡切换 -->
+                <TabControl Grid.Row="0" BorderThickness="0" Margin="4,4,4,0"
+                            Background="Transparent"
+                            Foreground="{DynamicResource PrimaryTextBrush}">
+                    <TabControl.Resources>
+                        <Style TargetType="TabItem">
+                            <Setter Property="Height" Value="36" />
+                            <Setter Property="FontSize" Value="12" />
+                            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                            <Setter Property="Background" Value="Transparent" />
+                        </Style>
+                    </TabControl.Resources>
+
+                    <!-- ⬛ 黑板 Tab -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <iconPacks:PackIconLucide Kind="Presentation" Width="14" Height="14" />
+                                <TextBlock Text="黑板" Margin="4,0,0,0" />
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding BlackboardEntries}" Margin="6,4">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,3" Padding="10,8"
+                                                Background="{DynamicResource DarkRegionBrush}"
+                                                CornerRadius="6"
+                                                BorderBrush="{DynamicResource BorderBrush}"
+                                                BorderThickness="1">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <!-- 类型标记 -->
+                                                <Border Grid.Column="0" CornerRadius="4"
+                                                        Padding="5,2" Margin="0,0,10,0"
+                                                        Background="{Binding Type,
+                                                            Converter={StaticResource BbColorConverter}}"
+                                                        VerticalAlignment="Top">
+                                                    <TextBlock Text="{Binding Type}" FontSize="9"
+                                                               Foreground="White" FontWeight="SemiBold" />
+                                                </Border>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding Content}"
+                                                               TextWrapping="Wrap" FontSize="12"
+                                                               Foreground="{DynamicResource PrimaryTextBrush}" />
+                                                    <TextBlock FontSize="10" Margin="0,4,0,0">
+                                                        <Run Text="{Binding Author}"
+                                                             Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                        <Run Text=" · "
+                                                             Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                        <Run Text="{Binding Timestamp, StringFormat=HH:mm:ss}"
+                                                             Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <!-- 🤖 Agent 状态 Tab -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <iconPacks:PackIconLucide Kind="Bot" Width="14" Height="14" />
+                                <TextBlock Text="Agents" Margin="4,0,0,0" />
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding AgentStatuses}" Margin="6,4">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,2" Padding="10,8"
+                                                Background="{DynamicResource DarkRegionBrush}"
+                                                CornerRadius="6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <iconPacks:PackIconLucide Kind="Cpu" Width="14" Height="14"
+                                                                              Foreground="{DynamicResource PrimaryTextBrush}"
+                                                                              VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding Name}" Margin="8,0,0,0"
+                                                               FontSize="13" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource PrimaryTextBrush}"
+                                                               VerticalAlignment="Center" />
+                                                </StackPanel>
+                                                <Border Grid.Column="1" Padding="8,3"
+                                                        CornerRadius="4"
+                                                        Background="{Binding Status,
+                                                            Converter={StaticResource StatusColorConverter}}">
+                                                    <TextBlock Text="{Binding Status}" FontSize="10"
+                                                               Foreground="White" FontWeight="SemiBold" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <!-- 📋 日志 Tab -->
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <iconPacks:PackIconLucide Kind="ScrollText" Width="14" Height="14" />
+                                <TextBlock Text="审计" Margin="4,0,0,0" />
+                            </StackPanel>
+                        </TabItem.Header>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding JournalEntries}" Margin="6,4">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,2" Padding="8,6"
+                                                Background="{DynamicResource DarkRegionBrush}"
+                                                CornerRadius="4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="60" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss}"
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                                           VerticalAlignment="Center" />
+                                                <Border Grid.Column="1" Padding="6,2" CornerRadius="3" Margin="4,0"
+                                                        Background="{Binding Event,
+                                                            Converter={StaticResource StatusColorConverter}}">
+                                                    <TextBlock Text="{Binding Event}" FontSize="9"
+                                                               Foreground="White" FontWeight="SemiBold" />
+                                                </Border>
+                                                <TextBlock Grid.Column="2" Text="{Binding Details}"
+                                                           FontSize="11" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+
+                <!-- === 底部快捷状态条 === -->
+                <Border Grid.Row="1" Background="{DynamicResource DarkRegionBrush}"
+                        Padding="10,8" Margin="0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <iconPacks:PackIconLucide Kind="Lock" Width="12" Height="12"
+                                                  Foreground="{DynamicResource SecondaryTextBrush}"
+                                                  VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ActiveLocks.Count, StringFormat='锁: {0}'}"
+                                   FontSize="11" Margin="4,0,12,0"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="|" FontSize="11"
+                                   Foreground="{DynamicResource BorderBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <iconPacks:PackIconLucide Kind="ScrollText" Width="12" Height="12"
+                                                  Foreground="{DynamicResource SecondaryTextBrush}"
+                                                  VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding JournalEntries.Count, StringFormat='日志: {0}'}"
+                                   FontSize="11" Margin="4,0,12,0"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="|" FontSize="11"
+                                   Foreground="{DynamicResource BorderBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <iconPacks:PackIconLucide Kind="Presentation" Width="12" Height="12"
+                                                  Foreground="{DynamicResource SecondaryTextBrush}"
+                                                  VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding BlackboardEntries.Count, StringFormat='黑板: {0}'}"
+                                   FontSize="11" Margin="4,0,0,0"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
