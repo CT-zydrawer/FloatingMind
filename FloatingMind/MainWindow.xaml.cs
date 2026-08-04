@@ -171,7 +171,7 @@ public partial class MainWindow : Window
     {
         if (_viewModel.ActiveWorkflow == null)
         {
-            MessageBox.Show("当前没有活跃的Workflow。请先输入一个任务。",
+            HandyControl.Controls.MessageBox.Show("当前没有活跃的Workflow。请先创建一个任务。",
                 "Workflow", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }

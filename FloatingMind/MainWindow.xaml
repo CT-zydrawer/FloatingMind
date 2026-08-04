@@ -87,10 +87,9 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal">
-                        <iconPacks:PackIconLucide Kind="Brain" Width="18" Height="18"
-                                                  Foreground="White" VerticalAlignment="Center" />
-                        <TextBlock Text="Floating Mind" Foreground="White" FontWeight="Bold" FontSize="15"
-                                   Margin="8,0,0,0" VerticalAlignment="Center" />
+
+                        <TextBlock Text="Floating Mind" Foreground="White" FontWeight="Bold" FontSize="17"
+                                   Margin="8,0,0,0" VerticalAlignment="Center" FontFamily="Cascadia Code"/>
                         <TextBlock Text="{Binding SystemStatus}" Foreground="#CCFFFFFF" FontSize="12"
                                    Margin="16,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
@@ -114,7 +113,7 @@
                 <ItemsControl ItemsSource="{Binding LogEntries}" Margin="14,10">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding}" FontFamily="Cascadia Code" FontSize="8"
+                            <TextBlock Text="{Binding}" FontFamily="Cascadia Code" FontSize="12"
                                        TextWrapping="Wrap" Margin="0,2"
                                        Foreground="{DynamicResource PrimaryTextBrush}" />
                         </DataTemplate>

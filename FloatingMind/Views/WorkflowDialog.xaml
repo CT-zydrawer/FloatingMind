@@ -37,7 +37,12 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Grid Margin="0,6">
-                            <Border Padding="16,12" CornerRadius="10" MinWidth="220"
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Padding="16,12" CornerRadius="10" MinWidth="220"
                                     Background="{DynamicResource DarkRegionBrush}"
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1" HorizontalAlignment="Center">
@@ -50,9 +55,9 @@
                                                HorizontalAlignment="Center" Margin="0,3,0,0" />
                                 </StackPanel>
                             </Border>
-                            <TextBlock Text="▼" FontSize="20" HorizontalAlignment="Center"
+                            <TextBlock Grid.Row="1" Text="▼" FontSize="20" HorizontalAlignment="Center"
                                        Foreground="{DynamicResource PrimaryBrush}" Margin="0,4" />
-                            <Border Padding="16,12" CornerRadius="10" MinWidth="220"
+                            <Border Grid.Row="2" Padding="16,12" CornerRadius="10" MinWidth="220"
                                     Background="{DynamicResource DarkRegionBrush}"
                                     BorderBrush="{DynamicResource BorderBrush}"
                                     BorderThickness="1" HorizontalAlignment="Center">
