@@ -3,10 +3,12 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using FloatingMind.Agents;
 using FloatingMind.Data;
+using FloatingMind.Models.AskUser;
 using FloatingMind.Models.Config;
 using FloatingMind.Services;
 using FloatingMind.ViewModels;
 using FloatingMind.Services.LLM;
+using FloatingMind.Views;
 
 namespace FloatingMind;
 
@@ -67,7 +69,8 @@ public partial class MainWindow : Window
 
         // Supervisor (信息不足时通过 OnAskUser 向用户提问澄清, 不再闲聊)
         _supervisor = new SupervisorAgent(intentRouter, workflowPlanner, modelRouter,
-            scheduler, blackboard, memory, journal, eventBus, validator, rollback);
+            scheduler, blackboard, memory, journal, eventBus, validator, rollback,
+            llm, promptBuilder);
 
         // ViewModel (共享同一config实例)
         _viewModel = new MainViewModel(_supervisor, blackboard, journal, scheduler, memory,
@@ -82,13 +85,18 @@ public partial class MainWindow : Window
                 RunningBadge.Visibility = _viewModel.IsRunning ? Visibility.Visible : Visibility.Collapsed;
         };
 
-        // 信息不足时 Supervisor 向用户提问: 显示提问栏并聚焦输入框
-        _supervisor.OnAskUser += question => Dispatcher.Invoke(() =>
+        // 信息不足时 Supervisor 向用户提问: 弹出 AskUserDialog 让用户选择选项
+        _supervisor.OnAskUser += request => Dispatcher.Invoke(() =>
         {
-            _viewModel.PendingQuestion = question;
-            _viewModel.HasPendingQuestion = true;
-            TxtQuestionAnswer.Clear();
-            TxtQuestionAnswer.Focus();
+            var dialog = new AskUserDialog(request) { Owner = this };
+            if (dialog.ShowDialog() == true)
+            {
+                _supervisor.ProvideUserAnswer(dialog.Result ?? new AskUserResponse { IsCancelled = true });
+            }
+            else
+            {
+                _supervisor.ProvideUserAnswer(new AskUserResponse { IsCancelled = true });
+            }
         });
 
         // 初始化
@@ -111,16 +119,6 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter && !_viewModel.IsRunning)
         {
             _viewModel.SendCommand.Execute(null);
-            e.Handled = true;
-        }
-    }
-
-    // === 提问栏 Enter 提交 ===
-    private void QuestionAnswer_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && _viewModel.HasPendingQuestion)
-        {
-            _viewModel.SubmitAnswerCommand.Execute(null);
             e.Handled = true;
         }
     }

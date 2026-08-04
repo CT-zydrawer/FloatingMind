@@ -121,32 +121,8 @@
                 </ItemsControl>
             </ScrollViewer>
 
-            <!-- === 提问/命令确认栏 === -->
+            <!-- === 命令确认栏 === -->
             <StackPanel Grid.Row="2">
-
-                <!-- 提问澄清栏: 信息不足时 Supervisor 向用户提问 -->
-                <Border Background="#443B82F6" Padding="12,8"
-                        Visibility="{Binding HasPendingQuestion,
-                            Converter={StaticResource BoolToVisConverter}, FallbackValue=Collapsed}">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="240" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <iconPacks:PackIconLucide Kind="MessageCircleQuestionMark" Width="16" Height="16"
-                                                  Foreground="#FF3B82F6" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{Binding PendingQuestion}"
-                                   Foreground="#FF3B82F6" TextWrapping="Wrap"
-                                   VerticalAlignment="Center" Margin="6,0,8,0" FontSize="12" />
-                        <TextBox Grid.Column="2" x:Name="TxtQuestionAnswer" Height="30"
-                                 hc:InfoElement.Placeholder="补充信息 / 取消"
-                                 KeyDown="QuestionAnswer_KeyDown" />
-                        <Button Grid.Column="3" Content="提交" Command="{Binding SubmitAnswerCommand}"
-                                Style="{StaticResource ButtonPrimary}" Width="64" Height="30" Margin="6,0,0,0" />
-                    </Grid>
-                </Border>
 
                 <!-- 命令确认栏 -->
                 <Border Background="#44D32F2F" Padding="12,8"

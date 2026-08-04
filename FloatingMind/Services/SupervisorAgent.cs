@@ -1,9 +1,12 @@
 using FloatingMind.Interfaces;
 using FloatingMind.Models.Agent;
+using FloatingMind.Models.AskUser;
 using FloatingMind.Models.Blackboard;
 using FloatingMind.Models.Config;
 using FloatingMind.Models.Workflow;
+using FloatingMind.Services.LLM;
 using System.Collections.Concurrent;
+using Newtonsoft.Json.Linq;
 
 namespace FloatingMind.Services;
 
@@ -28,26 +31,29 @@ public class SupervisorAgent
     private readonly EventBus _eventBus;
     private readonly ValidatorChain _validator;
     private readonly RollbackManager _rollback;
+    private readonly DeepSeekService? _llm;
+    private readonly PromptBuilder? _promptBuilder;
 
     /// <summary>信息不足时最多向用户提问的轮数</summary>
     private const int MaxClarificationRounds = 3;
 
     private readonly ConcurrentDictionary<string, WorkflowDef> _activeWorkflows = new();
     private UserTask? _currentTask;
-    private TaskCompletionSource<string>? _askTcs;
+    private TaskCompletionSource<AskUserResponse>? _askTcs;
 
     public event Action<string, string>? OnStatusChanged;
     public event Action<UserTask>? OnTaskCreated;
     public event Action<WorkflowDef>? OnWorkflowStarted;
     public event Action<WorkflowNode, AgentResult>? OnNodeCompleted;
     public event Action<string>? OnLogMessage;
-    /// <summary>信息不足时向用户提问, 等待回答</summary>
-    public event Action<string>? OnAskUser;
+    /// <summary>信息不足时向用户提问(结构化选项), 等待回答</summary>
+    public event Action<AskUserRequest>? OnAskUser;
 
     public SupervisorAgent(IntentRouter intentRouter, WorkflowPlanner workflowPlanner,
         ModelRouter modelRouter, AgentScheduler scheduler, BlackboardSystem blackboard,
         MemorySystem memory, JournalSystem journal, EventBus eventBus,
-        ValidatorChain validator, RollbackManager rollback)
+        ValidatorChain validator, RollbackManager rollback,
+        DeepSeekService? llm = null, PromptBuilder? promptBuilder = null)
     {
         _intentRouter = intentRouter;
         _workflowPlanner = workflowPlanner;
@@ -59,6 +65,8 @@ public class SupervisorAgent
         _eventBus = eventBus;
         _validator = validator;
         _rollback = rollback;
+        _llm = llm;
+        _promptBuilder = promptBuilder;
     }
 
     /// <summary>
@@ -82,17 +90,22 @@ public class SupervisorAgent
             if (!intent.NeedsWorkflow || intent.Intent == "General")
             {
                 Log($"[信息不足] 向用户提问 (第{round + 1}/{MaxClarificationRounds}轮)");
-                var question = BuildClarificationQuestion();
-                var answer = await AskUserAsync(question);
+                var request = await GenerateClarificationQuestionsAsync(userInput);
+                var response = await AskUserAsync(request);
 
-                if (string.IsNullOrWhiteSpace(answer) || IsCancelRequest(answer))
+                if (response.IsCancelled || response.Answers.Count == 0)
                 {
                     Log("用户未补充信息, 任务终止");
                     EmitStatus("Cancelled", "信息不足, 任务已取消");
                     return;
                 }
 
-                userInput = $"{userInput}\n[补充] {answer.Trim()}";
+                var answerText = response.ToText();
+                if (!string.IsNullOrWhiteSpace(answerText))
+                {
+                    Log($"[用户补充] {answerText}");
+                    userInput = $"{userInput}\n[补充] {answerText}";
+                }
                 continue;
             }
 
@@ -237,54 +250,173 @@ public class SupervisorAgent
     }
 
     /// <summary>
-    /// 向用户提问(UI弹出提问栏), 等待回答。
-    /// 无UI订阅时视为用户取消, 返回空字符串。
+    /// 向用户提问(结构化选项, UI弹出Dialog), 等待回答。
+    /// 无UI订阅时视为用户取消, 返回 IsCancelled=true。
     /// </summary>
-    public async Task<string> AskUserAsync(string question)
+    public async Task<AskUserResponse> AskUserAsync(AskUserRequest request)
     {
-        Log($"[提问] {question}");
+        foreach (var q in request.Questions)
+            Log($"[提问] {q.Question}");
 
         if (OnAskUser == null)
         {
             Log("[提问] 无UI订阅提问事件, 视为取消");
-            return string.Empty;
+            return new AskUserResponse { IsCancelled = true };
         }
 
-        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<AskUserResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         _askTcs = tcs;
-        OnAskUser?.Invoke(question);
+        OnAskUser?.Invoke(request);
         return await tcs.Task;
     }
 
     /// <summary>
     /// 用户回答提问(由UI调用), 唤醒等待中的 AskUserAsync
     /// </summary>
-    public void ProvideUserAnswer(string answer)
+    public void ProvideUserAnswer(AskUserResponse response)
     {
-        _askTcs?.TrySetResult(answer ?? string.Empty);
+        _askTcs?.TrySetResult(response ?? new AskUserResponse { IsCancelled = true });
         _askTcs = null;
     }
 
     /// <summary>
-    /// 构造澄清问题 —— 指出信息缺口, 引导用户补充操作/对象/产出
+    /// 动态生成澄清问题 —— LLM分析用户输入中的具体信息缺口, 生成有针对性的问题和选项。
+    /// LLM不可用时回退到基于规则的简单提问。
     /// </summary>
-    private static string BuildClarificationQuestion()
+    private async Task<AskUserRequest> GenerateClarificationQuestionsAsync(string userInput)
     {
-        return "您的输入信息不足, 我无法确定要执行的具体任务。请补充以下信息:\n" +
-               "• 操作类型: 您希望我做什么(如: 分析 / 修改 / 搜索 / 生成代码 / 构建...)\n" +
-               "• 操作对象: 针对哪个文件、目录或项目\n" +
-               "• 期望产出: 最终想要的结果是什么\n" +
-               "(输入\"取消\"可终止本次任务)";
+        // LLM路径: 让DeepSeek分析用户输入, 生成针对性问题
+        if (_llm != null && _promptBuilder != null && _llm.IsConfigured)
+        {
+            try
+            {
+                var (systemPrompt, userMessage) = _promptBuilder.BuildClarificationQuestions(userInput);
+                var response = await _llm.ChatAsync(userMessage, systemPrompt, temperature: 0.3);
+                var parsed = ParseQuestionsFromLLM(response);
+                if (parsed != null && parsed.Questions.Count > 0)
+                    return parsed;
+            }
+            catch (Exception ex)
+            {
+                Log($"[提问生成] LLM失败, 回退到规则: {ex.Message}");
+            }
+        }
 
+        // 回退: 基于用户输入简单推断信息缺口
+        return BuildFallbackQuestion(userInput);
     }
 
-    /// <summary>用户回答是否为取消请求</summary>
-    private static bool IsCancelRequest(string answer)
+    /// <summary>
+    /// 解析LLM返回的JSON为 AskUserRequest
+    /// </summary>
+    private static AskUserRequest? ParseQuestionsFromLLM(string response)
     {
-        var a = answer.Trim();
-        return a.Equals("取消", StringComparison.OrdinalIgnoreCase)
-            || a.Equals("cancel", StringComparison.OrdinalIgnoreCase)
-            || a.Equals("算了", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(response)) return null;
+        try
+        {
+            var json = response.Trim();
+            var start = json.IndexOf('{');
+            var end = json.LastIndexOf('}');
+            if (start < 0 || end <= start) return null;
+            json = json[start..(end + 1)];
+
+            var obj = JObject.Parse(json);
+            var questionsArr = obj["questions"] as JArray;
+            if (questionsArr == null || questionsArr.Count == 0) return null;
+
+            var request = new AskUserRequest();
+            foreach (var q in questionsArr)
+            {
+                var question = q["question"]?.ToString();
+                if (string.IsNullOrWhiteSpace(question)) continue;
+
+                var item = new QuestionItem
+                {
+                    Question = question,
+                    MultiSelect = (bool?)q["multiSelect"] ?? false
+                };
+
+                var optionsArr = q["options"] as JArray;
+                if (optionsArr == null || optionsArr.Count == 0) continue;
+
+                foreach (var opt in optionsArr)
+                {
+                    var label = opt["label"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(label)) continue;
+                    item.Options.Add(new QuestionOption
+                    {
+                        Label = label,
+                        Description = opt["description"]?.ToString() ?? ""
+                    });
+                }
+
+                if (item.Options.Count > 0)
+                    request.Questions.Add(item);
+            }
+
+            return request.Questions.Count > 0 ? request : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// 规则回退: 无LLM时根据用户输入推断信息缺口
+    /// </summary>
+    private static AskUserRequest BuildFallbackQuestion(string userInput)
+    {
+        var input = userInput.Trim();
+        var hasActionVerb = input.Contains("分析") || input.Contains("修改") || input.Contains("搜索")
+            || input.Contains("生成") || input.Contains("构建") || input.Contains("修复")
+            || input.Contains("检查") || input.Contains("重构");
+        var hasPath = input.Contains("\\") || input.Contains("/") || input.Contains("文件") || input.Contains("目录");
+
+        var questions = new List<QuestionItem>();
+
+        if (!hasActionVerb)
+        {
+            questions.Add(new QuestionItem
+            {
+                Question = "您希望我执行什么操作?",
+                MultiSelect = false,
+                Options = new()
+                {
+                    new() { Label = "分析", Description = "阅读并理解代码结构、依赖等" },
+                    new() { Label = "修改", Description = "重构、修复Bug等代码变更" },
+                    new() { Label = "搜索", Description = "在代码库中查找特定内容" },
+                    new() { Label = "生成", Description = "生成新文件或代码" }
+                }
+            });
+        }
+
+        if (!hasPath)
+        {
+            questions.Add(new QuestionItem
+            {
+                Question = "操作对象是哪个文件或目录?",
+                MultiSelect = false,
+                Options = new()
+                {
+                    new() { Label = "当前工作区", Description = "使用已配置的工作区路径" },
+                    new() { Label = "我来指定路径", Description = "请在回复中补充文件/目录路径" }
+                }
+            });
+        }
+
+        if (questions.Count == 0)
+        {
+            questions.Add(new QuestionItem
+            {
+                Question = "您的输入信息不够明确, 请补充更多细节",
+                MultiSelect = false,
+                Options = new()
+                {
+                    new() { Label = "重新描述任务", Description = "用更详细的描述重新说明您的需求" },
+                    new() { Label = "取消", Description = "终止本次任务" }
+                }
+            });
+        }
+
+        return new AskUserRequest { Questions = questions };
     }
 
     private async Task<AgentResult?> HandleNodeFailure(WorkflowDef workflow, WorkflowNode node,

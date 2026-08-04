@@ -87,7 +87,6 @@ public class MainViewModel : ObservableObject
         ClearCommand = new RelayCommand(() => UserInput = "");
         ConfirmCommand = new AsyncRelayCommand(async () => await ConfirmPending());
         RejectCommand = new AsyncRelayCommand(async () => await RejectPending());
-        SubmitAnswerCommand = new RelayCommand(SubmitAnswer);
     }
 
     // ===== Properties =====
@@ -181,22 +180,11 @@ public class MainViewModel : ObservableObject
     private string _pendingCommand = "";
     public string PendingCommand { get => _pendingCommand; set => SetProperty(ref _pendingCommand, value); }
 
-    // === Pending question (信息不足时Supervisor向用户提问) ===
-    private bool _hasPendingQuestion;
-    public bool HasPendingQuestion { get => _hasPendingQuestion; set => SetProperty(ref _hasPendingQuestion, value); }
-
-    private string _pendingQuestion = "";
-    public string PendingQuestion { get => _pendingQuestion; set => SetProperty(ref _pendingQuestion, value); }
-
-    private string _questionAnswer = "";
-    public string QuestionAnswer { get => _questionAnswer; set => SetProperty(ref _questionAnswer, value); }
-
     // === Commands ===
     public ICommand SendCommand { get; }
     public ICommand ClearCommand { get; }
     public ICommand ConfirmCommand { get; }
     public ICommand RejectCommand { get; }
-    public ICommand SubmitAnswerCommand { get; }
 
     private async Task ExecuteUserInput()
     {
@@ -238,15 +226,6 @@ public class MainViewModel : ObservableObject
         HasPendingConfirm = false;
         PendingCommand = "";
         await Task.CompletedTask;
-    }
-
-    private void SubmitAnswer()
-    {
-        var answer = QuestionAnswer;
-        QuestionAnswer = "";
-        HasPendingQuestion = false;
-        PendingQuestion = "";
-        _supervisor.ProvideUserAnswer(answer);
     }
 
     // === Config ===

@@ -1,0 +1,44 @@
+<Window x:Class="FloatingMind.Views.AskUserDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+        Title="需要您的确认"
+        Width="560" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource RegionBrush}">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题栏 -->
+        <Border Grid.Row="0" Background="{DynamicResource DarkRegionBrush}"
+                Padding="14,12" CornerRadius="8" Margin="0,0,0,16">
+            <StackPanel Orientation="Horizontal">
+                <iconPacks:PackIconLucide Kind="MessageCircleQuestionMark" Width="20" Height="20"
+                                          Foreground="#FF3B82F6" VerticalAlignment="Center" />
+                <TextBlock Text="任务信息不足, 请选择以下选项补充"
+                           FontSize="14" FontWeight="SemiBold" Margin="10,0,0,0"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        <!-- 问题列表 -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="400">
+            <StackPanel x:Name="QuestionsPanel" />
+        </ScrollViewer>
+
+        <!-- 底部按钮 -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,16,0,0">
+            <Button Content="取消" Click="Cancel_Click" Width="80" Height="34"
+                    Style="{StaticResource ButtonDefault}" Margin="0,0,10,0" />
+            <Button Content="确认" Click="Submit_Click" Width="80" Height="34"
+                    Style="{StaticResource ButtonPrimary}" />
+        </StackPanel>
+    </Grid>
+</Window>

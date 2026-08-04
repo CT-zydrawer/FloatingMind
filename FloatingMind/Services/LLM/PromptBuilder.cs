@@ -154,6 +154,19 @@ public class PromptBuilder
             $"请验收");
     }
 
+    /// ===== 澄清提问生成 =====
+    public (string system, string user) BuildClarificationQuestions(string userInput)
+    {
+        var pm = _memory.GetProjectMemory();
+        var projectCtx = pm.Project.Length > 0
+            ? $"项目: {pm.Project}, 框架: {pm.Framework}, 语言: {pm.Language}, 工作区: {pm.ProjectRoot}"
+            : "未初始化项目, 工作区路径: " + pm.ProjectRoot;
+
+        return (AgentPrompts.QuestionGenerator
+            .Replace("{projectContext}", projectCtx),
+            userInput);
+    }
+
     // ===== 辅助 =====
 
     private static string GetDirSummary(string root)
