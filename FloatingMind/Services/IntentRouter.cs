@@ -74,11 +74,12 @@ public class IntentRouter
         ["实现"] = ("Development", 6, "CodeDevelopment"),
         ["重构"] = ("Development", 7, "FileRefactor"),
 
-        // 分析类
+        // 分析类 (检查/审查/审计 → 动态Analysis流程: 发现→分析→审查报告)
         ["分析"] = ("Analysis", 5, null),
-        ["检查"] = ("Analysis", 3, null),
+        ["检查"] = ("Analysis", 4, null),
+        ["审查"] = ("Analysis", 4, null),
         ["审计"] = ("Analysis", 4, null),
-        ["review"] = ("Analysis", 3, null),
+        ["review"] = ("Analysis", 4, null),
 
         // 搜索类
         ["搜索"] = ("Search", 2, "QuickQuery"),

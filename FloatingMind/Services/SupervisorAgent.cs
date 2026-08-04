@@ -115,7 +115,8 @@ public class SupervisorAgent
                 OriginalInput = userInput,
                 Intent = intent,
                 // 探测用户输入中显式指定的路径作为本次任务工作区(如 "修复 D:\minimind-plus")
-                WorkspaceRoot = PathExtractor.ExtractExistingPath(userInput)
+                // 注意: 输入指向文件时, 工作区取文件所在目录; 文件本身由 InjectUserInput 定位为 target
+                WorkspaceRoot = ResolveTaskWorkspace(userInput)
             };
             _currentTask = task;
             OnTaskCreated?.Invoke(task);
@@ -486,14 +487,23 @@ public class SupervisorAgent
     }
 
     /// <summary>
-    /// 将用户输入注入到节点参数,确保Agent能获取到任务内容
-    /// 模板已显式设置的参数不会被覆盖(TryAdd)
+    /// 将用户输入注入到节点参数,确保Agent能获取到任务内容。
+    /// 模板已显式设置的参数不会被覆盖(TryAdd)。
+    /// 修复: target 不再注入整句输入(会导致发现阶段文件名匹配永远失败),
+    /// 而是注入定位到的具体文件/目录; query 优先用具体目标, 供搜索类Agent使用。
     /// </summary>
     private static void InjectUserInput(WorkflowNode node, string userInput, string workspaceRoot)
     {
-        // 原始输入与目标: 所有Agent都可读取
+        // 原始输入: 所有Agent都可读取(完整语义)
         node.Parameters.TryAdd("input", userInput);
-        node.Parameters.TryAdd("target", userInput);
+
+        // target: 用户输入中定位到的具体文件/目录(绝对路径)
+        var target = PathMapper.LocateExisting(userInput, workspaceRoot);
+        if (!string.IsNullOrEmpty(target))
+            node.Parameters.TryAdd("target", target);
+
+        // query: 搜索类Agent使用(有具体目标用目标, 否则用整句输入)
+        node.Parameters.TryAdd("query", !string.IsNullOrEmpty(target) ? target : userInput);
 
         // 任务工作区: 从用户输入探测出的路径, 优先于Agent默认工作区
         if (!string.IsNullOrWhiteSpace(workspaceRoot))
@@ -514,9 +524,10 @@ public class SupervisorAgent
             case "CodeAgent":
                 node.Parameters.TryAdd("action", node.Label switch
                 {
-                    "Coding" or "Writing" or "Implement" or "Refactor" =>
+                    "Coding" or "Writing" or "Implement" or "Outline" =>
                         IsFixRequest(userInput) ? "fix" : "generate",
-                    "Review" => "review",
+                    "Refactor" => "refactor",               // 重构: 走 RefactorCode(按 path 重写)
+                    "Review" or "Report" => "review",       // 审查/报告: 定位目标文件 + 报告落盘
                     _ => "analyze"
                 });
                 break;
@@ -532,6 +543,19 @@ public class SupervisorAgent
                     node.Parameters.TryAdd("action", "exec");
                 break;
         }
+    }
+
+    /// <summary>
+    /// 解析任务工作区: 用户输入中的显式路径(已存在)。
+    /// 路径为文件时取其所在目录(工作区必须是目录, 文件由 target 定位)。
+    /// </summary>
+    private static string ResolveTaskWorkspace(string userInput)
+    {
+        var extracted = PathExtractor.ExtractExistingPath(userInput);
+        if (string.IsNullOrEmpty(extracted)) return string.Empty;
+
+        if (Directory.Exists(extracted)) return extracted;
+        return Path.GetDirectoryName(extracted) ?? string.Empty;
     }
 
     /// <summary>判断输入是否为修复类请求(修复/无法运行/报错等)</summary>

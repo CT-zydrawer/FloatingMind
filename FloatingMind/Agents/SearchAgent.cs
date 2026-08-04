@@ -49,14 +49,15 @@ public class SearchAgent : IAgent
         var taskId = context.GetValueOrDefault("taskId", "");
         var query = context.GetValueOrDefault("query", "");
         var action = context.GetValueOrDefault("action", "search");
+        var workspaceRoot = context.GetValueOrDefault("workspaceRoot", _workspaceRoot);
 
         try
         {
             return action switch
             {
-                "search" => await SmartSearch(query, taskId, context),
-                "code_search" => await CodeSearch(context),
-                "file_search" => await FileSearch(context),
+                "search" => await SmartSearch(query, taskId, workspaceRoot, context),
+                "code_search" => await CodeSearch(context, workspaceRoot),
+                "file_search" => await FileSearch(context, workspaceRoot),
                 _ => AgentResult.Ok(Name, node.Id, $"SearchAgent [{action}] 完成")
             };
         }
@@ -67,45 +68,72 @@ public class SearchAgent : IAgent
     }
 
     /// <summary>
-    /// 智能搜索: 先用本地文件系统搜索, 再用LLM综合分析
+    /// 智能搜索: 先用本地文件系统搜索(任务工作区), 再用LLM综合分析。
+    /// 使用任务工作区而非Agent默认工作区, 保证 "搜索 D:\xxx" 落在正确目录。
     /// </summary>
     private async Task<AgentResult> SmartSearch(string query, string taskId,
-        Dictionary<string, string> context)
+        string workspaceRoot, Dictionary<string, string> context)
     {
         if (string.IsNullOrEmpty(query))
             return AgentResult.Ok(Name, "", "无搜索查询词");
 
         _journal.LogAgentAction(Name, "SmartSearch", query);
 
-        // Step 1: 本地文件系统搜一把
+        // 本地搜索词: 优先取输入中路径的文件名部分(如 "搜索 D:\proj 里的 User 类" → "User"), 否则整句;
+        // 目标是目录时直接列出目录内容作为本地结果
+        var localTerm = query;
         var localResults = new List<string>();
         var matchingFiles = new List<string>();
+        var tokens = PathMapper.ExtractPathTokens(query);
+        if (tokens.Count > 0)
+        {
+            var lastToken = tokens[^1].TrimEnd('\\', '/');
+            if (Directory.Exists(lastToken))
+            {
+                try
+                {
+                    foreach (var entry in Directory.GetFileSystemEntries(lastToken)
+                                 .Where(e => !IsExcludedPath(e, workspaceRoot)).Take(30))
+                        localResults.Add($"  · {Path.GetRelativePath(lastToken, entry)}");
+                    localResults.Insert(0, $"目录 {lastToken} 内容:");
+                }
+                catch { }
+            }
+            else
+            {
+                var name = Path.GetFileNameWithoutExtension(lastToken);
+                if (!string.IsNullOrWhiteSpace(name) && name != lastToken)
+                    localTerm = name;
+            }
+        }
+
+        // Step 1: 本地文件系统搜一把
         try
         {
-            matchingFiles = Directory.GetFiles(_workspaceRoot, $"*{query}*", SearchOption.AllDirectories)
-                .Where(f => !IsExcludedPath(f))
+            matchingFiles = Directory.GetFiles(workspaceRoot, $"*{localTerm}*", SearchOption.AllDirectories)
+                .Where(f => !IsExcludedPath(f, workspaceRoot))
                 .Take(15).ToList();
             if (matchingFiles.Count > 0)
             {
                 localResults.Add($"找到 {matchingFiles.Count} 个匹配文件:");
                 foreach (var f in matchingFiles)
-                    localResults.Add($"  · {Path.GetRelativePath(_workspaceRoot, f)}");
+                    localResults.Add($"  · {Path.GetRelativePath(workspaceRoot, f)}");
             }
 
             // 代码内容搜索 (C# 文件)
-            var codeMatches = Directory.GetFiles(_workspaceRoot, "*.cs", SearchOption.AllDirectories)
-                .Where(f => !IsExcludedPath(f))
+            var codeMatches = Directory.GetFiles(workspaceRoot, "*.cs", SearchOption.AllDirectories)
+                .Where(f => !IsExcludedPath(f, workspaceRoot))
                 .Where(f =>
                 {
-                    try { return File.ReadAllText(f).Contains(query, StringComparison.OrdinalIgnoreCase); }
+                    try { return File.ReadAllText(f).Contains(localTerm, StringComparison.OrdinalIgnoreCase); }
                     catch { return false; }
                 })
                 .Take(10).ToList();
             if (codeMatches.Count > 0)
             {
-                localResults.Add($"代码中包含 \"{query}\" 的文件:");
+                localResults.Add($"代码中包含 \"{localTerm}\" 的文件:");
                 foreach (var f in codeMatches)
-                    localResults.Add($"  · {Path.GetRelativePath(_workspaceRoot, f)}");
+                    localResults.Add($"  · {Path.GetRelativePath(workspaceRoot, f)}");
             }
         }
         catch { /* 本地搜索失败不影响LLM搜索 */ }
@@ -135,7 +163,7 @@ public class SearchAgent : IAgent
             {
                 var content = await File.ReadAllTextAsync(firstFile);
                 if (content.Length > 2000) content = content[..2000] + "\n// ... (截断)";
-                fileContents = $"\n首个匹配文件 ({Path.GetRelativePath(_workspaceRoot, firstFile)}) 内容预览:\n{content}";
+                fileContents = $"\n首个匹配文件 ({Path.GetRelativePath(workspaceRoot, firstFile)}) 内容预览:\n{content}";
             }
             catch { }
         }
@@ -169,7 +197,7 @@ public class SearchAgent : IAgent
         try
         {
             var answer = await _llm.ChatAsync(userPrompt,
-                systemPrompt.Replace("{workspaceContext}", GetWorkspaceOverview()));
+                systemPrompt.Replace("{workspaceContext}", GetWorkspaceOverview(workspaceRoot)));
             return AgentResult.Ok(Name, "",
                 $"=== 搜索结果: {query} ===\n{answer}");
         }
@@ -181,13 +209,13 @@ public class SearchAgent : IAgent
         }
     }
 
-    private async Task<AgentResult> CodeSearch(Dictionary<string, string> context)
+    private async Task<AgentResult> CodeSearch(Dictionary<string, string> context, string workspaceRoot)
     {
         var query = context.GetValueOrDefault("query", "");
-        var path = context.GetValueOrDefault("path", _workspaceRoot);
+        var path = context.GetValueOrDefault("path", workspaceRoot);
 
         var files = Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories)
-            .Where(f => !IsExcludedPath(f))
+            .Where(f => !IsExcludedPath(f, workspaceRoot))
             .Where(f =>
             {
                 try { return File.ReadAllText(f).Contains(query, StringComparison.OrdinalIgnoreCase); }
@@ -216,13 +244,13 @@ public class SearchAgent : IAgent
         return AgentResult.Ok(Name, "", sb.ToString());
     }
 
-    private Task<AgentResult> FileSearch(Dictionary<string, string> context)
+    private Task<AgentResult> FileSearch(Dictionary<string, string> context, string workspaceRoot)
     {
         var query = context.GetValueOrDefault("query", "");
-        var path = context.GetValueOrDefault("path", _workspaceRoot);
+        var path = context.GetValueOrDefault("path", workspaceRoot);
 
         var files = Directory.GetFiles(path, $"*{query}*", SearchOption.AllDirectories)
-            .Where(f => !IsExcludedPath(f))
+            .Where(f => !IsExcludedPath(f, workspaceRoot))
             .Take(30)
             .Select(f => $"  {Path.GetRelativePath(path, f)}")
             .ToList();
@@ -231,25 +259,29 @@ public class SearchAgent : IAgent
             $"=== 文件搜索: \"{query}\" ===\n找到{files.Count}个文件\n{string.Join("\n", files)}"));
     }
 
-    private bool IsExcludedPath(string fullPath)
-    {
-        var relPath = Path.GetRelativePath(_workspaceRoot, fullPath);
-        return relPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .Any(seg => seg is "bin" or "obj" or ".vs" or ".git" or ".floatingmind"
-                        or ".agents" or ".deepcode" or "node_modules" or "packages"
-                        or "Debug" or "Release");
-    }
-
-    private string GetWorkspaceOverview()
+    private static bool IsExcludedPath(string fullPath, string workspaceRoot)
     {
         try
         {
-            var entries = Directory.GetFileSystemEntries(_workspaceRoot)
-                .Where(p => !IsExcludedPath(p))
+            var relPath = Path.GetRelativePath(workspaceRoot, fullPath);
+            return relPath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Any(seg => seg is "bin" or "obj" or ".vs" or ".git" or ".floatingmind"
+                            or ".agents" or ".deepcode" or "node_modules" or "packages"
+                            or "Debug" or "Release");
+        }
+        catch { return true; }
+    }
+
+    private static string GetWorkspaceOverview(string workspaceRoot)
+    {
+        try
+        {
+            var entries = Directory.GetFileSystemEntries(workspaceRoot)
+                .Where(p => !IsExcludedPath(p, workspaceRoot))
                 .Take(30)
                 .Select(p =>
                 {
-                    var rel = Path.GetRelativePath(_workspaceRoot, p);
+                    var rel = Path.GetRelativePath(workspaceRoot, p);
                     var isDir = (File.GetAttributes(p) & FileAttributes.Directory) != 0;
                     return isDir ? $"[DIR] {rel}/" : $"      {rel}";
                 });

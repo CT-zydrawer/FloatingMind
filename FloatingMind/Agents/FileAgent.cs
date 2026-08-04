@@ -44,7 +44,7 @@ public class FileAgent : IAgent
         if (action == "write")
         {
             // 只有写操作才声明需要修改的文件,从而触发资源锁
-            var path = context.GetValueOrDefault("path", "");
+            var path = ResolveWritePath(context, workspaceRoot);
             if (!string.IsNullOrEmpty(path))
             {
                 if (IsSystemProtectedFile(path))
@@ -111,13 +111,14 @@ public class FileAgent : IAgent
     {
         var path = context.GetValueOrDefault("path", "");
 
-        // === 智能路径解析: 如果 path 参数为空, 尝试从 target/input 中提取 ===
-        if (string.IsNullOrEmpty(path))
+        // === 智能路径定位: path 为空时从 target/input 中定位(绝对路径/相对路径/文件名) ===
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
-            path = ExtractPathFromInput(
-                context.GetValueOrDefault("target", ""),
-                context.GetValueOrDefault("input", ""),
-                workspaceRoot);
+            path = PathMapper.LocateExisting(context.GetValueOrDefault("target", ""), workspaceRoot);
+        }
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            path = PathMapper.LocateExisting(context.GetValueOrDefault("input", ""), workspaceRoot);
         }
 
         // 无有效路径 → 退化为列出工作区
@@ -131,83 +132,48 @@ public class FileAgent : IAgent
         {
             var content = File.ReadAllText(path);
             var preview = content.Length > 500 ? content[..500] + "..." : content;
-            return Task.FromResult(AgentResult.Ok(Name, "", $"读取: {path}\n{preview}"));
+            // 读取的文件记入 ModifiedFiles: 让后续节点(重构/审查)能通过 path 参数定位到目标
+            return Task.FromResult(AgentResult.Ok(Name, "", $"读取: {path}\n{preview}",
+                new List<string> { path }));
         }
 
         return Task.FromResult(AgentResult.Fail(Name, "", $"文件不存在: {path}"));
     }
 
     /// <summary>
-    /// 从用户输入(target/input)中智能提取文件/目录路径
-    /// 支持带引号路径(如 "C:\foo\bar.py")、绝对路径、相对路径
+    /// 解析写目标路径: 显式 path > 用户输入(target/input)中的路径候选(可尚不存在)。
+    /// 与 Discovery 阶段共用, 保证资源锁与实际写入路径一致。
     /// </summary>
-    private static string ExtractPathFromInput(string target, string input, string workspaceRoot)
+    private static string ResolveWritePath(Dictionary<string, string> context, string workspaceRoot)
     {
-        var candidates = new[] { target, input }.Where(s => !string.IsNullOrWhiteSpace(s));
+        var path = context.GetValueOrDefault("path", "");
+        if (!string.IsNullOrEmpty(path)) return path;
 
-        foreach (var text in candidates)
+        var text = $"{context.GetValueOrDefault("target", "")} {context.GetValueOrDefault("input", "")}";
+        foreach (var cand in PathMapper.ExtractPathTokens(text))
         {
-            // 尝试提取带引号的路径: "C:\foo\bar.py" 或 'C:\foo\bar.py'
-            var quoted = ExtractQuotedPath(text);
-            if (!string.IsNullOrEmpty(quoted) && (File.Exists(quoted) || Directory.Exists(quoted)))
-                return quoted;
-
-            // 尝试提取绝对路径(以盘符或 \\ 开头)
-            if (text.Length >= 3 && char.IsLetter(text[0]) && text[1] == ':' && text[2] == '\\')
-            {
-                var absPath = text.Trim().TrimEnd('"', '\'');
-                if (File.Exists(absPath) || Directory.Exists(absPath))
-                    return absPath;
-            }
-
-            // 尝试作为相对路径(在工作区下查找)
-            var relPath = Path.Combine(workspaceRoot, text.Trim().Trim('"', '\''));
-            if (File.Exists(relPath) || Directory.Exists(relPath))
-                return relPath;
-        }
-
-        return string.Empty;
-    }
-
-    private static string ExtractQuotedPath(string text)
-    {
-        // 匹配 "..." 或 '...' 中的路径
-        foreach (var quote in new[] { '"', '\'' })
-        {
-            int start = text.IndexOf(quote);
-            while (start >= 0)
-            {
-                int end = text.IndexOf(quote, start + 1);
-                if (end > start + 1)
-                {
-                    var candidate = text[(start + 1)..end];
-                    // 简单启发: 包含目录分隔符或文件扩展名则认为是路径
-                    if (candidate.Contains(Path.DirectorySeparatorChar) ||
-                        candidate.Contains(Path.AltDirectorySeparatorChar) ||
-                        Path.HasExtension(candidate))
-                    {
-                        return candidate;
-                    }
-                }
-                start = text.IndexOf(quote, start + 1);
-            }
+            if (Path.IsPathRooted(cand)) return cand;
+            return Path.Combine(workspaceRoot, cand);
         }
         return string.Empty;
     }
 
     private async Task<AgentResult> WriteFile(Dictionary<string, string> context, string taskId)
     {
-        var path = context.GetValueOrDefault("path", "");
-        // 无path时优先用上一节点文本产出作为内容; 仍无目标则降级跳过而非失败
+        // 目标路径: 显式 path > 用户输入中的路径候选(可尚不存在), 再映射到工作区内安全绝对路径
+        var workspaceRoot = context.GetValueOrDefault("workspaceRoot", _workspaceRoot);
+        var rawPath = ResolveWritePath(context, workspaceRoot);
+        var path = PathMapper.MapToWorkspace(rawPath, workspaceRoot, out var mapErr);
+        if (path == null)
+        {
+            return AgentResult.Ok(Name, "",
+                $"文件写入跳过: {mapErr}");
+        }
+
+        // 内容: 显式 content > 上一节点文本产出
         var content = context.GetValueOrDefault("content", "");
         if (string.IsNullOrEmpty(content))
             content = context.GetValueOrDefault("previousOutput", "");
-
-        if (string.IsNullOrEmpty(path))
-        {
-            return AgentResult.Ok(Name, "",
-                "文件写入跳过: 未指定目标路径。如需写入请在节点参数中提供 path。");
-        }
 
         // === 系统保护文件检查 ===
         if (IsSystemProtectedFile(path))
@@ -221,6 +187,15 @@ public class FileAgent : IAgent
             // 避免用空内容覆盖已有文件
             return AgentResult.Ok(Name, "",
                 $"文件写入跳过: 无内容可写(上一节点也无文本产出)。目标: {path}");
+        }
+
+        // === 防覆盖守卫: 目标已存在且内容直接来自上一节点文本产出时跳过,
+        // 避免流程链(如 Format 节点拿到 Review 文本)把已成稿文件覆盖成报告内容 ===
+        if (File.Exists(path) && string.Equals(content, context.GetValueOrDefault("previousOutput", ""),
+                StringComparison.Ordinal))
+        {
+            return AgentResult.Ok(Name, "",
+                $"文件写入跳过: 目标已存在且内容与上一节点产出相同, 不覆盖已有文件。目标: {path}");
         }
 
         // 备份原文件
