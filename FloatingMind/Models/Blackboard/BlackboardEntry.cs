@@ -13,6 +13,12 @@ public abstract class BlackboardEntry
     public string Author { get; set; } = string.Empty;
     public DateTime Timestamp { get; set; } = DateTime.Now;
 
+    /// <summary>
+    /// 可选结构化数据(JSON字符串), 供其他Agent解读。
+    /// 如 Analyzer 提交的项目画像(ProjectProfile), 保持五类条目的文本兼容。
+    /// </summary>
+    public string? JsonPayload { get; set; }
+
     public override string ToString() => $"[{Type}] {Content}";
 }
 

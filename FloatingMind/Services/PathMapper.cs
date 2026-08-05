@@ -137,49 +137,51 @@ public static class PathMapper
         string workspaceRoot, string defaultFileName, out string? error)
     {
         error = null;
-        var candidates = new List<string>();
+        // (路径, 是否用户/模板显式指定): 显式候选优先于工作区组合候选
+        var candidates = new List<(string Path, bool UserExplicit)>();
 
         // 1. 显式 output 参数(规范为绝对路径)
         if (!string.IsNullOrWhiteSpace(explicitOutput))
         {
             var eo = explicitOutput.Trim().Trim('"', '\'');
-            candidates.Add(Path.IsPathRooted(eo)
+            var full = Path.IsPathRooted(eo)
                 ? Path.GetFullPath(eo)
-                : Path.Combine(workspaceRoot, eo));
+                : Path.Combine(workspaceRoot, eo);
+            candidates.Add((full, true));
         }
 
-        // 2. 用户输入中的路径候选(规范为绝对路径, 保持出现顺序)
+        // 2. 用户输入中的路径候选(保持出现顺序)
         foreach (var tok in ExtractPathTokens(userInput))
         {
             if (Path.IsPathRooted(tok))
             {
                 // 绝对路径: 已存在目录→目录+默认名; 带扩展名→文件; 无扩展名→按目录处理("放到 D:\outdir")
                 if (Directory.Exists(tok))
-                    candidates.Add(Path.Combine(Path.GetFullPath(tok), SanitizeFileName(defaultFileName)));
+                    candidates.Add((Path.Combine(Path.GetFullPath(tok), SanitizeFileName(defaultFileName)), true));
                 else if (Path.HasExtension(tok))
-                    candidates.Add(Path.GetFullPath(tok));
+                    candidates.Add((Path.GetFullPath(tok), true));
                 else
-                    candidates.Add(Path.Combine(Path.GetFullPath(tok), SanitizeFileName(defaultFileName)));
+                    candidates.Add((Path.Combine(Path.GetFullPath(tok), SanitizeFileName(defaultFileName)), true));
             }
             else if (LooksLikeFileRef(tok))
             {
-                candidates.Add(Path.Combine(workspaceRoot, tok));
+                candidates.Add((Path.Combine(workspaceRoot, tok), false));
             }
         }
 
         string resolved;
         if (candidates.Count > 0)
         {
-            // 绝对路径候选优先; 多个时取最后一个(通常最后的提及才是输出目标,
+            // 显式候选优先; 多个时取最后一个(通常最后的提及才是输出目标,
             // 如 "根据 user.py 生成 main.py" → main.py)
             resolved = candidates
-                    .Where(Path.IsPathRooted)
-                    .LastOrDefault(c => !Directory.Exists(c) && LooksLikeFileRef(c))
-                ?? candidates.LastOrDefault(c => !Directory.Exists(c) && LooksLikeFileRef(c))
-                ?? candidates[0];
+                    .Where(c => c.UserExplicit)
+                    .LastOrDefault(c => !Directory.Exists(c.Path) && LooksLikeFileRef(c.Path)).Path
+                ?? candidates.LastOrDefault(c => !Directory.Exists(c.Path) && LooksLikeFileRef(c.Path)).Path
+                ?? candidates[0].Path;
 
             // 候选解析后仍是目录(如输入只给了目录) → 追加默认文件名
-            if (Directory.Exists(resolved))
+            if (!string.IsNullOrEmpty(resolved) && Directory.Exists(resolved))
                 resolved = Path.Combine(resolved, SanitizeFileName(defaultFileName));
         }
         else
@@ -189,7 +191,7 @@ public static class PathMapper
 
         // 用户/模板显式指定的位置不受工作区边界限制, 但仍禁止系统保护文件与目录穿越
         return EnsureSafeOutput(ref resolved, workspaceRoot,
-            enforceWorkspace: candidates.Count == 0, out error)
+            enforceWorkspace: !candidates.Any(c => c.UserExplicit), out error)
             ? resolved : null;
     }
 

@@ -135,6 +135,17 @@ public class CommandAgent : IAgent
             }
         }
 
+        // === 项目画像验证命令(Analyzer规则生成, 如 dotnet build xxx.csproj / python -m compileall .) ===
+        var profile = _blackboard.GetProjectProfile(taskId);
+        if (profile != null)
+        {
+            foreach (var v in profile.Validation)
+            {
+                if (!string.IsNullOrWhiteSpace(v.Command) && !commands.Contains(v.Command))
+                    commands.Add(v.Command);
+            }
+        }
+
         // === LLM生成针对性验证命令 ===
         if (_llm.IsConfigured)
         {

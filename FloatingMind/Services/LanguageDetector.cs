@@ -100,7 +100,7 @@ public static class LanguageDetector
         ProjectLanguage.Python => "python -m py_compile ",
         ProjectLanguage.CSharp => "dotnet build",
         ProjectLanguage.FSharp => "dotnet build",
-        ProjectLanguage.VisualBasic=>"donet bulid",
+        ProjectLanguage.VisualBasic => "dotnet build",
         _ => string.Empty
     };
 

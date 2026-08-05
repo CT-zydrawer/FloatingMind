@@ -54,7 +54,8 @@ public partial class MainWindow : Window
 
         var intentRouter = new IntentRouter(llm, promptBuilder);
         var workflowPlanner = new WorkflowPlanner();
-        var validator = new ValidatorChain(eventBus, journal);
+        // 注入LLM: Acceptance Validator 用用户原始目标做需求审查(LLM未配置时回退规则检查)
+        var validator = new ValidatorChain(eventBus, journal, llm, promptBuilder);
 
         // Agent注册 (workspaceRoot 指向用户项目源码,而非编译输出目录)
         var scheduler = new AgentScheduler(blackboard, journal, eventBus,

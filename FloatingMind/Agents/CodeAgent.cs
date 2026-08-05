@@ -115,13 +115,32 @@ public class CodeAgent : IAgent
     {
         var workspaceRoot = context.GetValueOrDefault("workspaceRoot", _workspaceRoot);
         var language = LanguageDetector.Detect(workspaceRoot);
+
+        // 目标: path 参数(可指向文件或目录), 文件时取其所在目录做源码概览
         var path = context.GetValueOrDefault("path", workspaceRoot);
-        var files = EnumerateSourceFiles(path, language).Take(30).ToList();
+        if (!string.IsNullOrEmpty(path) && File.Exists(path))
+            path = Path.GetDirectoryName(path) ?? workspaceRoot;
+
+        // === 规则提取项目结构化画像(零成本) ===
+        var profile = ProjectProfileBuilder.Build(workspaceRoot, language);
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("=== 项目代码结构分析 ===");
-        sb.AppendLine($"语言: {LanguageDetector.GetFileExtension(language).TrimStart('.')} | 源码文件总数: {files.Count}");
+        sb.AppendLine($"项目: {profile.Project}");
+        sb.AppendLine($"语言: {profile.Language} | 框架: {profile.Framework}");
+        sb.AppendLine($"工程文件: {(profile.Projects.Count > 0 ? string.Join(", ", profile.Projects) : "(无)")}");
+        if (profile.TestProjects.Count > 0)
+            sb.AppendLine($"测试工程: {string.Join(", ", profile.TestProjects)}");
+        sb.AppendLine("验证命令:");
+        if (profile.Validation.Count > 0)
+            foreach (var v in profile.Validation)
+                sb.AppendLine($"  [{v.Type}] {v.Command}");
+        else
+            sb.AppendLine("  (无)");
 
+        // 源码文件概览
+        var files = EnumerateSourceFiles(path, language).Take(30).ToList();
+        sb.AppendLine($"\n源码文件(前{files.Count}个):");
         var nsSet = new HashSet<string>();
         foreach (var f in files)
         {
@@ -143,6 +162,13 @@ public class CodeAgent : IAgent
         sb.AppendLine($"\n模块/命名空间: {nsSet.Count}");
         foreach (var ns in nsSet.Take(20)) sb.AppendLine($"  {ns}");
 
+        // === 提交结构化画像到Blackboard, 供其他Agent解读(CommandAgent消费validation命令等) ===
+        var taskId = context.GetValueOrDefault("taskId", "");
+        _blackboard.AddProjectProfile(taskId, profile, Name);
+        _blackboard.AddObservation(taskId,
+            $"项目画像已提交: {profile.Project} ({profile.Language}/{profile.Framework})", Name);
+
+        sb.AppendLine($"\n项目画像JSON:\n{profile.ToJson()}");
         return AgentResult.Ok(Name, "", sb.ToString());
     }
 
@@ -175,6 +201,13 @@ public class CodeAgent : IAgent
         var summary = _blackboard.GetSummary(taskId);
         var previousOutput = context.GetValueOrDefault("previousOutput", "");
         var explicitOutput = context.GetValueOrDefault("output", "");
+
+        // 项目画像(前序Analyzer提交): 追加到描述, 让文件清单与代码生成贴合真实项目结构
+        var profile = _blackboard.GetProjectProfile(taskId);
+        if (profile != null && !description.Contains("项目画像"))
+        {
+            description = $"{description}\n\n[项目画像(已确认)]\n{profile.ToJson()}";
+        }
 
         // === 模式A: 显式 output 参数(模板/调度指定) → 单文件生成, 写入该路径 ===
         if (!string.IsNullOrWhiteSpace(explicitOutput))

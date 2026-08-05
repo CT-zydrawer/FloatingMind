@@ -226,7 +226,9 @@ public class SupervisorAgent
         var lastResult = new AgentResult { AgentName = lastNode.AgentType, Success = true,
             Output = "Workflow completed" };
         var finalEntries = _blackboard.GetAll(task.Id).ToList();
-        var finalValidation = await _validator.ValidateFinalAcceptance(lastNode, lastResult, finalEntries);
+        // 传入用户原始目标, 供Acceptance做LLM需求审查(设计文档7.4)
+        var finalValidation = await _validator.ValidateFinalAcceptance(lastNode, lastResult, finalEntries,
+            task.OriginalInput);
         if (finalValidation.Failed)
         {
             Log($"最终验收失败: {string.Join("; ", finalValidation.Steps.Where(s => !s.Passed).Select(s => s.Reason))}");

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using FloatingMind.Models.Blackboard;
+using Newtonsoft.Json;
 
 namespace FloatingMind.Services;
 
@@ -128,6 +129,45 @@ public class BlackboardSystem
         return decision;
     }
 
+    // ===== 项目画像 (Analyzer提交, 其他Agent解读) =====
+    /// <summary>
+    /// Analyzer 将项目结构化画像提交到黑板(Observation + JsonPayload)。
+    /// 其他Agent通过 GetProjectProfile 解读, 如 CommandAgent 消费 validation 命令。
+    /// </summary>
+    public Observation AddProjectProfile(string taskId, ProjectProfile profile, string author)
+    {
+        var obs = new Observation
+        {
+            Content = $"项目画像: {profile.Project} ({profile.Language}/{profile.Framework}) " +
+                      $"工程{profile.Projects.Count}个 测试工程{profile.TestProjects.Count}个",
+            Author = author,
+            Source = author,
+            JsonPayload = profile.ToJson()
+        };
+        GetBoard(taskId).Add(obs);
+        OnEntryAdded?.Invoke(taskId, obs);
+        return obs;
+    }
+
+    /// <summary>读取任务黑板上最近一次提交的项目画像, 供其他Agent解读; 无则返回null</summary>
+    public ProjectProfile? GetProjectProfile(string taskId)
+    {
+        var board = GetBoard(taskId);
+        foreach (var entry in board.AsEnumerable().Reverse())
+        {
+            if (entry is Observation obs && !string.IsNullOrEmpty(obs.JsonPayload))
+            {
+                try
+                {
+                    var profile = JsonConvert.DeserializeObject<ProjectProfile>(obs.JsonPayload);
+                    if (profile != null) return profile;
+                }
+                catch { /* 非画像条目, 忽略 */ }
+            }
+        }
+        return null;
+    }
+
     // ===== 清理 =====
     public void Clear(string taskId)
     {
@@ -144,8 +184,14 @@ public class BlackboardSystem
         var conflicts = board.OfType<ConflictEntry>().Where(c => c.Status == "Open")
             .Select(c => $"⚠ {c.Topic}: {string.Join(" vs ", c.Items)}");
 
+        var profile = GetProjectProfile(taskId);
+        var profileLine = profile != null
+            ? $"◆ 项目画像: {profile.Project} ({profile.Language}/{profile.Framework}) 工程[{string.Join(", ", profile.Projects)}]"
+            : string.Empty;
+
         return string.Join("\n",
-            facts.Select(f => $"✓ Fact: {f}").Concat(
+            (profileLine.Length > 0 ? new[] { profileLine } : Array.Empty<string>()).Concat(
+            facts.Select(f => $"✓ Fact: {f}")).Concat(
             decisions.Select(d => $"● Decision: {d}")).Concat(
             conflicts.Select(c => $"⚠ Conflict: {c}")));
     }
