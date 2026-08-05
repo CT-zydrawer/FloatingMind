@@ -9,7 +9,9 @@ public enum ProjectLanguage
     JavaScript,
     TypeScript,
     Java,
-    Go
+    Go,
+    FSharp,
+    VisualBasic
 }
 
 /// <summary>
@@ -20,7 +22,7 @@ public static class LanguageDetector
 {
     private static readonly string[] SourceExts =
     {
-        ".py", ".cs", ".js", ".ts", ".java", ".go"
+        ".py", ".cs", ".js", ".ts", ".java", ".go",".fs"
     };
 
     private static readonly HashSet<string> ExcludedDirs = new(StringComparer.OrdinalIgnoreCase)
@@ -58,6 +60,8 @@ public static class LanguageDetector
             ".ts" => ProjectLanguage.TypeScript,
             ".java" => ProjectLanguage.Java,
             ".go" => ProjectLanguage.Go,
+            ".fs" => ProjectLanguage.FSharp,
+            ".vb" =>ProjectLanguage.VisualBasic,
             _ => ProjectLanguage.Unknown
         };
     }
@@ -71,6 +75,8 @@ public static class LanguageDetector
         ProjectLanguage.TypeScript => "*.ts",
         ProjectLanguage.Java => "*.java",
         ProjectLanguage.Go => "*.go",
+        ProjectLanguage.FSharp =>"*.fs",
+        ProjectLanguage.VisualBasic =>"*.vb",
         _ => "*.*"
     };
 
@@ -83,6 +89,8 @@ public static class LanguageDetector
         ProjectLanguage.TypeScript => ".ts",
         ProjectLanguage.Java => ".java",
         ProjectLanguage.Go => ".go",
+        ProjectLanguage.FSharp => ".fs",
+        ProjectLanguage.VisualBasic =>".vb",
         _ => ".txt"
     };
 
@@ -91,6 +99,8 @@ public static class LanguageDetector
     {
         ProjectLanguage.Python => "python -m py_compile ",
         ProjectLanguage.CSharp => "dotnet build",
+        ProjectLanguage.FSharp => "dotnet build",
+        ProjectLanguage.VisualBasic=>"donet bulid",
         _ => string.Empty
     };
 

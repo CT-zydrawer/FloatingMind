@@ -41,15 +41,7 @@
                                     DisplayMemberBinding="{Binding Details}" />
                 </GridView>
             </ListView.View>
-            <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
-                    <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
-                    <Setter Property="Background" Value="Transparent" />
-                    <Setter Property="FontSize" Value="12" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-                    <Setter Property="BorderThickness" Value="0,0,0,1" />
-                </Style>
-            </ListView.ItemContainerStyle>
+            
         </ListView>
     </Grid>
 </Window>
